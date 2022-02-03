@@ -41,13 +41,19 @@ function onMessage(event) {
 function myFunction(id) {
     var inpObj = document.getElementById("i"+id);
     if (!inpObj.checkValidity()) {
-      document.getElementById("m"+id).innerHTML = inpObj.validationMessage;
+        document.getElementById("m"+id).innerHTML = inpObj.validationMessage;
     } else {
-      document.getElementById("m"+id).innerHTML = "Input OK";
-      console.log('Send data :');
-      
-      var message = "{\"card\":" + id + ",\"value\":" + inpObj.value + "}";
-      console.log(message);
-      websocket.send(message);
+        document.getElementById("m"+id).innerHTML = "Input OK";
+        console.log('Send data :');
+        
+        var message = "{\"card\":" + id + ",\"value\":" + inpObj.value + "}";
+        console.log(message);
+        websocket.send(message);
     } 
-  } 
+} 
+
+function myReboot(id) {
+    console.log("Reboot");
+    var message = "{\"card\":" + id + ",\"value\":0}";
+    websocket.send(message);
+} 

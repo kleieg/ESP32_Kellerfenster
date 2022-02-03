@@ -1,7 +1,6 @@
 #include <Arduino.h>
 
-#include <WiFi.h>
-#include <PubSubClient.h>
+
 #include <Wire.h>
 #include <Adafruit_BME280.h>
 #include <SPI.h>
@@ -13,52 +12,31 @@
 #include "SPIFFS.h"
 #include <Arduino_JSON.h>
 #include <AsyncElegantOTA.h>
+#include <NTPClient.h>
+#include <WiFiUdp.h>
 
 #include "WLAN_Credentials.h"
-
-#if ARDUHAL_LOG_LEVEL >= ARDUHAL_LOG_LEVEL_INFO
-#define SERIALINIT Serial.begin(115200);
-#else
-#define SERIALINIT
-#endif
-
-//<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<   Anpassungen !!!!
-// set hostname used for MQTT tag and WiFi 
-#define HOSTNAME "BME280"
+#include "config.h"
+#include "wifi_mqtt.h"
 
 
-// variables to connects to  MQTT broker
-const char* mqtt_server = "192.168.178.15";
-const char* willTopic = "tele/SR04/LWT";       // muss mit HOSTNAME passen !!!  tele/HOSTNAME/LWT    !!!
+// NTP
+WiFiUDP ntpUDP;
+NTPClient timeClient(ntpUDP);
+long My_time = 0;
+long Start_time;
+long Up_time;
+long U_days;
+long U_hours;
+long U_min;
+long U_sec;
 
-//<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<   Anpassungen Ende !!!!
+// Timers auxiliar variables
+long now = millis();
+char strtime[8];
 
 
 Adafruit_BME280 bme; // I2C               
-
-
-// for MQTT
-byte willQoS = 0;
-const char* willMessage = "Offline";
-boolean willRetain = true;
-std::string mqtt_tag;
-int Mqtt_sendInterval = 120001;   // in milliseconds = 2 minutes
-long Mqtt_lastScan = 0;
-long lastReconnectAttempt = 0;
-
-// Define NTP Client to get time
-const char* ntpServer = "pool.ntp.org";
-const long  gmtOffset_sec = 0;
-const int   daylightOffset_sec = 0;
-int UTC_syncIntervall = 3600000; // in milliseconds = 1 hour
-long UTC_lastSync;
-time_t UTC_time;
-
-// Initializes the espClient. 
-WiFiClient myClient;
-PubSubClient client(myClient);
-// name used as Mqtt tag
-std::string gateway = HOSTNAME ;   
 
 /*
 used GPIOs 
@@ -112,13 +90,10 @@ long MotorStart = 0;
 int MotorRun;
 bool MotorClose;
 
-// Timer
-long now = millis();
-char strtime[8];
 
 
 // Create AsyncWebServer object on port 80
-AsyncWebServer server(80);
+AsyncWebServer Asynserver(80);
 
 // Create a WebSocket object
 AsyncWebSocket ws("/ws");
@@ -136,14 +111,19 @@ void initSPIFFS() {
 String getOutputStates(){
   JSONVar myArray;
   
-  myArray["cards"][0]["c_text"] = HOSTNAME;
-  myArray["cards"][1]["c_text"] = willTopic;
+  U_days = Up_time / 86400;
+  U_hours = (Up_time % 86400) / 3600;
+  U_min = (Up_time % 3600) / 60;
+  U_sec = (Up_time % 60);
+
+  myArray["cards"][0]["c_text"] = Hostname;
+  myArray["cards"][1]["c_text"] = WiFi.dnsIP().toString() + "   /   " + String(VERSION);
   myArray["cards"][2]["c_text"] = String(WiFi.RSSI());
-  myArray["cards"][3]["c_text"] = String(BME_Time);
-  myArray["cards"][4]["c_text"] = String(Mqtt_sendInterval) + "ms";
-  myArray["cards"][5]["c_text"] = String(Window_scanIntervall) + "ms";
-  myArray["cards"][6]["c_text"] = String(Button_scanIntervall) + "ms";
-  myArray["cards"][7]["c_text"] = String(BME280_scanIntervall) + "ms";
+  myArray["cards"][3]["c_text"] = String(MQTT_INTERVAL) + "ms";
+  myArray["cards"][4]["c_text"] = String(U_days) + " days " + String(U_hours) + ":" + String(U_min) + ":" + String(U_sec);
+  myArray["cards"][5]["c_text"] = "WiFi = " + String(WiFi_reconnect) + "   MQTT = " + String(Mqtt_reconnect);
+  myArray["cards"][6]["c_text"] = String(Mode);
+  myArray["cards"][7]["c_text"] = " to reboot click ok";
   myArray["cards"][8]["c_text"] = String(BME_Humidity) +"%";
   myArray["cards"][9]["c_text"] = String(BME_Pressure) ;
   myArray["cards"][10]["c_text"] = String(BME_Temperature) + "Grad";
@@ -161,19 +141,14 @@ void notifyClients(String state) {
 void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
     AwsFrameInfo *info = (AwsFrameInfo*)arg;
   if (info->final && info->index == 0 && info->len == len && info->opcode == WS_TEXT) {
-    data[len] = 0;
-    char help[30];
-    int card;
-    int value;
-    
-    for (int i = 0; i <= len; i++){
-      help[i] = data[i];
-    }
+    data[len] = 0;   // according to AsyncWebServer documentation this is ok
 
     log_i("Data received: ");
-    log_i("%s\n",help);
+    log_i("%s\n",data);
 
-    JSONVar myObject = JSON.parse(help);
+    JSONVar myObject = JSON.parse((const char *)data);
+    int card;
+    int value;
 
     card =  myObject["card"];
     value =  myObject["value"];
@@ -183,6 +158,10 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
     switch (card) {
       case 0:   // fresh connection
         notifyClients(getOutputStates());
+        break;
+      case 7:
+        log_i("Reset..");
+        ESP.restart();
         break;
     }
   }
@@ -204,59 +183,6 @@ void onEvent(AsyncWebSocket *server, AsyncWebSocketClient *client,AwsEventType t
     case WS_EVT_ERROR:
       break;
   }
-}
-
-void initWebSocket() {
-  ws.onEvent(onEvent);
-  server.addHandler(&ws);
-}
-
-// init WiFi
-void setup_wifi() {
-
-  delay(10);
-  digitalWrite(LED_auto, 1); 
-  delay(500);
-  digitalWrite(LED_auto, 0); 
-  delay(500);
-  digitalWrite(LED_open, 1);
-  delay(500);
-  digitalWrite(LED_open, 0);
-  delay(500);
-  digitalWrite(LED_close, 1);
-  delay(500);
-  digitalWrite(LED_close, 0);
-  log_i("Connecting to ");
-  log_i("%s",ssid);
-  log_i("%s",password);
-  WiFi.mode(WIFI_STA);
-  WiFi.setHostname(HOSTNAME);
-  WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-     if(led == 0){
-       digitalWrite(LED_auto, 0);  // LED aus
-       led = 1;
-     }else{
-       digitalWrite(LED_auto, 1);  // LED ein
-       led = 0;
-     }
-    log_i(".");
-  }
-
-  digitalWrite(LED_auto, 0);  // LED aus
-  led = 1;
-  log_i("WiFi connected - IP address: ");
-  log_i("%s",WiFi.localIP().toString().c_str());
-
-  // get time from NTP-server
-  log_i("init NTP-server");
-  configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);  // update ESP-systemtime to UTC
-  delay(100);                                                 // udate takes some time
-  time(&UTC_time);
-  itoa(UTC_time,strtime,10);
-  log_i("%s","Unix-timestamp =" );
-  log_i("%s",strtime);
 }
 
 
@@ -292,38 +218,6 @@ void LED_blink(int stat) {
     }
   }   
 
-
-// reconnect to WiFi 
-void reconnect_wifi() {
-  log_i("%s\n","WiFi try reconnect"); 
-  WiFi.begin();
-  delay(500);
-  if (WiFi.status() == WL_CONNECTED) {
-    // Once connected, publish an announcement...
-    log_i("%s\n","WiFi reconnected"); 
-  }
-}
-
-// This functions reconnects your ESP32 to your MQTT broker
-
-void reconnect_mqtt() {
-  if (client.connect(gateway.c_str(), willTopic, willQoS, willRetain, willMessage)) {
-    // Once connected, publish an announcement...
-    log_i("%s\n","Mqtt connected"); 
-    mqtt_tag = gateway + "/connect";
-    client.publish(mqtt_tag.c_str(),"connected");
-    log_i("%s",mqtt_tag.c_str());
-    log_i("%s\n","connected");
-    mqtt_tag = "tele/" + gateway  + "/LWT";
-    client.publish(mqtt_tag.c_str(),"Online",willRetain);
-    log_i("%s",mqtt_tag.c_str());
-    log_i("%s\n","Online");
-
-    mqtt_tag = "cmnd/" + gateway + "/#";
-    client.subscribe(mqtt_tag.c_str());
-  }
-}
-
 // receive MQTT messages
 void MQTT_callback(char* topic, byte* message, unsigned int length) {
   
@@ -337,12 +231,11 @@ void MQTT_callback(char* topic, byte* message, unsigned int length) {
   }
   log_i("%s\n",MQTT_message);
 
-  String Topic_Window = String("cmnd/");
-  Topic_Window = String(Topic_Window + gateway.c_str() + "/Window");
-  String Topic_Mode = String("cmnd/");
-  Topic_Mode = String(Topic_Mode + gateway.c_str() + "/Mode");
+  String windowTopic = Hostname + "/CMD/Window";
+  String modeTopic = Hostname + "/CMD/Mode";
+  String strTopic = String(topic);
 
-  if (String(topic) == Topic_Window ){
+  if (strTopic == windowTopic ){
 
     ButtonlastScan = ButtonlastScan + 30000;       // ignore pressed botton next 30 seconds
 
@@ -362,7 +255,7 @@ void MQTT_callback(char* topic, byte* message, unsigned int length) {
     }
   }
 
-  if (String(topic) == Topic_Mode ){
+  if (strTopic == modeTopic ){
 
     if(MQTT_message == "auto"){
       log_i("%s\n","Mode = auto");
@@ -408,8 +301,6 @@ void BME280_scan() {
   BME_Humidity = bme.readHumidity();
   BME_Pressure = bme.readPressure() / 100.0F ;  // This forces floating point division
 
-  time(&UTC_time);
-  BME_Time = UTC_time;
   notifyClients(getOutputStates());
 }
 
@@ -417,43 +308,31 @@ void BME280_scan() {
 void MQTTsend () {
 
  JSONVar mqtt_data; 
-  
-  mqtt_tag = "tele/" + gateway + "/SENSOR";
-  log_i("%s",mqtt_tag.c_str());
 
+  String mqtt_tag = Hostname + "/STATUS";
+  log_i("%s\n", mqtt_tag.c_str());
+  
+  mqtt_data["Time"] = My_time;
+  mqtt_data["RSSI"] = WiFi.RSSI();
   mqtt_data["Temp"] = round (BME_Temperature*10) / 10;
   mqtt_data["Hum"] = round (BME_Humidity*10) / 10;
   mqtt_data["Pres"] = round (BME_Pressure*10) / 10;
   mqtt_data["Mode"] = BME_Mode;
-
   if  ( WindowState ) {
     mqtt_data["Window"] = 1;
   }
   else{
     mqtt_data["Window"] = 0;
   }
-  
-  mqtt_data["RSSI"] = WiFi.RSSI();
-  mqtt_data["Time"] = BME_Time;
+
   String mqtt_string = JSON.stringify(mqtt_data);
 
-  log_i("%s",mqtt_string.c_str()); 
+  log_i("%s\n", mqtt_string.c_str());
 
-  client.publish(mqtt_tag.c_str(), mqtt_string.c_str());
+  Mqttclient.publish(mqtt_tag.c_str(), mqtt_string.c_str());
 
-/*
-  static char Temperature_char[7];
-  dtostrf(Temperature, 6, 2, Temperature_char);
+  notifyClients(getOutputStates());
 
-  // Publishes Temperature and Humidity values only if value is not "nan"
-  // dtostrf some times returns "nan" for unknown reason
-  if (strcmp(Temperature_char , "nan") != 0 ) {
-    client.publish("BME280/temperature", Temperature_char);
-    log_i("%s","BME280/temperature=");
-    log_i("%s",Temperature_char);
-  }
-
-*/
 }
 
 void setup() {
@@ -476,11 +355,11 @@ void setup() {
   digitalWrite (CloseGpio, HIGH);
 
   log_i("setup WiFi\n");
-  setup_wifi();
+  initWiFi();
 
   log_i("setup MQTT\n");
-  client.setServer(mqtt_server, 1883);
-  client.setCallback(MQTT_callback);
+  Mqttclient.setServer(MQTT_BROKER, 1883);
+  Mqttclient.setCallback(MQTT_callback);
 
   log_i("setup BME280\n");
   setup_BME280() ;
@@ -489,27 +368,40 @@ void setup() {
 
 
   initSPIFFS();
-  initWebSocket();
+ 
+  // init Websocket
+  ws.onEvent(onEvent);
+  Asynserver.addHandler(&ws);
 
   // Route for root / web page
-  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
+  Asynserver.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
     request->send(SPIFFS, "/index.html", "text/html",false);
   });
 
-  server.serveStatic("/", SPIFFS, "/");
+  Asynserver.serveStatic("/", SPIFFS, "/");
+
+  timeClient.begin();
+  timeClient.setTimeOffset(0);
+  // update UPCtime for Starttime
+  timeClient.update();
+  Start_time = timeClient.getEpochTime();
 
   // Start ElegantOTA
-  AsyncElegantOTA.begin(&server);
+  AsyncElegantOTA.begin(&Asynserver);
   
   // Start server
-  server.begin();
+  Asynserver.begin();
 
 }
 
 void loop() {
 
-  AsyncElegantOTA.loop();
   ws.cleanupClients();
+
+  // update UPCtime
+    timeClient.update();
+    My_time = timeClient.getEpochTime();
+    Up_time = My_time - Start_time;
 
   now = millis();
 
@@ -527,10 +419,10 @@ void loop() {
     bool OldState = WindowState;
     WindowState = digitalRead(WindowGpio);
     if ((WindowState == LOW) && (OldState == HIGH)){
-      Mqtt_lastScan = now - Mqtt_sendInterval - 10;  // --> MQTT send !!
+      Mqtt_lastSend = now - MQTT_INTERVAL - 10;  // --> MQTT send !!
     }
     if ((WindowState == HIGH) && (OldState == LOW)){
-      Mqtt_lastScan = now - Mqtt_sendInterval - 10;  // --> MQTT send !!
+      Mqtt_lastSend = now - MQTT_INTERVAL - 10;  // --> MQTT send !!
     }
   }    
 
@@ -544,7 +436,7 @@ void loop() {
     if (ButtonState == LOW) {
       BME_Mode = BME_Mode + 1;
       if ( BME_Mode == 4 ) BME_Mode = 1;
-      Mqtt_lastScan = now - Mqtt_sendInterval - 10;  // --> MQTT send !!
+      Mqtt_lastSend = now - MQTT_INTERVAL - 10;  // --> MQTT send !!
       ButtonlastScan = ButtonlastScan + 10000;       // ignore pressed botton next 10 seconds
     }
   } 
@@ -573,47 +465,34 @@ void loop() {
      }
   }    
 
-
   // check WiFi
   if (WiFi.status() != WL_CONNECTED  ) {
     // try reconnect every 5 seconds
     if (now - lastReconnectAttempt > 5000) {
       lastReconnectAttempt = now;              // prevents mqtt reconnect running also
       // Attempt to reconnect
-      log_i("WiFi reconnect"); 
       reconnect_wifi();
     }
   }
 
-  // perform UTC sync
-  if (now - UTC_lastSync > UTC_syncIntervall) {
-    UTC_lastSync = now;
-    configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);  // update ESP-systemtime to UTC
-    delay(100);                                                 // udate takes some time
-    time(&UTC_time);
-    log_i("%s","Re-sync ESP-time!! Unix-timestamp =");
-    itoa(UTC_time,strtime,10);
-    log_i("%s",strtime);
-  }   
 
   // check if MQTT broker is still connected
-  if (!client.connected()) {
+  if (!Mqttclient.connected()) {
     // try reconnect every 5 seconds
     if (now - lastReconnectAttempt > 5000) {
       lastReconnectAttempt = now;
       // Attempt to reconnect
-      log_i("MQTT reconnect"); 
       reconnect_mqtt();
     }
   } else {
     // Client connected
 
-    client.loop();
+    Mqttclient.loop();
 
     // send data to MQTT broker
-    if (now - Mqtt_lastScan > Mqtt_sendInterval) {
-    Mqtt_lastScan = now;
+    if (now - Mqtt_lastSend > MQTT_INTERVAL) {
+    Mqtt_lastSend = now;
     MQTTsend();
     } 
-  }
+  }   
 }

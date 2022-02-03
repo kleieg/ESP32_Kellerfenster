@@ -8,7 +8,8 @@
 </head>
 <body>
   <div class="topnav">
-    <h1>ESP WEB SERVER - Kellerfenster V1.0</h1>
+    <h1>ESP WEB SERVER - Kellerfenster
+    </h1>
   </div>
   <div class="content">
     <div class="card-grid">
@@ -17,7 +18,7 @@
             <p class ="card-text"><span id="0"></span></p>
         </div>
         <div class="card">             
-          <p class="card-title">MQTT last will topic</p>
+          <p class="card-title">DNS address / Version</p>
           <p class ="card-text"><span id="1"></span></p>
         </div>
         <div class="card">             
@@ -25,24 +26,25 @@
           <p class ="card-text"><span id="2"></span></p>
         </div>
         <div class="card">
-          <p class="card-title">Unix timestamp</p>
+          <p class="card-title">Mqtt_sendInterval</p>
           <p class ="card-text"><span id="3"></span></p>
         </div>
         <div class="card">             
-            <p class="card-title">Mqtt_sendInterval</p>
+            <p class="card-title">Uptime</p>
             <p class ="card-text"><span id="4"></span></p>
         </div>
         <div class="card">             
-            <p class="card-title">Scan Fensterkontakt</p>
+            <p class="card-title">Number of Re-connects</p>
             <p class ="card-text"><span id="5"></span></p>
         </div>
         <div class="card">
-          <p class="card-title">Scan Taster</p>
+          <p class="card-title">Mode</p>
           <p class ="card-text"><span id="6"></span></p>
         </div>
         <div class="card">
-          <p class="card-title">Scan TBME280</p>
+          <p class="card-title"> Reboot</p>
           <p class ="card-text"><span id="7"></span></p>
+          <button onclick="myReboot('7')">OK</button>
         </div>
         <div class="card">             
           <p class="card-title">Luftfeuchtigkeit</p>
@@ -55,10 +57,6 @@
         <div class="card">
         <p class="card-title">Temperatur</p>
         <p class ="card-text"><span id="10"></span></p>
-        </div>
-        <div class="card">
-          <p class="card-title">Mode</p>
-          <p class ="card-text"><span id="11"></span></p>
         </div>
     </div>
   </div>
