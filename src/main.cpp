@@ -147,8 +147,9 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
     log_i("%s\n",data);
 
     JSONVar myObject = JSON.parse((const char *)data);
-    int card;
     int value;
+    int card;
+    
 
     card =  myObject["card"];
     value =  myObject["value"];
@@ -239,15 +240,15 @@ void MQTT_callback(char* topic, byte* message, unsigned int length) {
 
     ButtonlastScan = ButtonlastScan + 30000;       // ignore pressed botton next 30 seconds
 
-    if(MQTT_message == "open"){
+    if(MQTT_message == "1"){
       log_i("%s\n","open window");
       digitalWrite(OpenGpio, LOW);
       MotorStart = millis();
       MotorRun = MotorCount;
       MotorClose = false;
     }
-    else if(MQTT_message == "close"){
-      log_i("%s\n","open window");
+    else if(MQTT_message == "2"){
+      log_i("%s\n","close window");
       digitalWrite(CloseGpio, LOW);
       MotorStart = millis();
       MotorRun = MotorCount;
@@ -257,17 +258,17 @@ void MQTT_callback(char* topic, byte* message, unsigned int length) {
 
   if (strTopic == modeTopic ){
 
-    if(MQTT_message == "auto"){
+    if(MQTT_message == "1"){
       log_i("%s\n","Mode = auto");
       Mode = 1;
       BME_Mode = 1;
     }
-    if(MQTT_message == "open"){
+    if(MQTT_message == "2"){
       log_i("%s\n","Mode = open");
       Mode = 2;
       BME_Mode = 2;
     }
-    if(MQTT_message == "close"){
+    if(MQTT_message == "3"){
       log_i("%s\n","Mode = close");
       Mode = 3;
       BME_Mode = 3;
@@ -277,6 +278,7 @@ void MQTT_callback(char* topic, byte* message, unsigned int length) {
 
   }
   notifyClients(getOutputStates());
+  Mqtt_lastSend = now - MQTT_INTERVAL - 10;  // --> MQTT send !!
 
 }
 
@@ -307,7 +309,7 @@ void BME280_scan() {
 // send data using Mqtt 
 void MQTTsend () {
 
- JSONVar mqtt_data; 
+ JSONVar mqtt_data,  actuators;
 
   String mqtt_tag = Hostname + "/STATUS";
   log_i("%s\n", mqtt_tag.c_str());
@@ -317,17 +319,21 @@ void MQTTsend () {
   mqtt_data["Temp"] = round (BME_Temperature*10) / 10;
   mqtt_data["Hum"] = round (BME_Humidity*10) / 10;
   mqtt_data["Pres"] = round (BME_Pressure*10) / 10;
-  mqtt_data["Mode"] = BME_Mode;
-  if  ( WindowState ) {
-    mqtt_data["Window"] = 1;
+
+  actuators["Mode"] = BME_Mode;
+   if  ( WindowState ) {
+    actuators["Window"] = 1;
   }
   else{
-    mqtt_data["Window"] = 0;
+    actuators["Window"] = 0;
   }
+  mqtt_data["Actuators"] = actuators;
+
 
   String mqtt_string = JSON.stringify(mqtt_data);
 
   log_i("%s\n", mqtt_string.c_str());
+
 
   Mqttclient.publish(mqtt_tag.c_str(), mqtt_string.c_str());
 
