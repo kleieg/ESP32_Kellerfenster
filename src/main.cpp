@@ -147,14 +147,13 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
     log_i("%s\n",data);
 
     JSONVar myObject = JSON.parse((const char *)data);
-    int value;
+//    int value;
     int card;
     
-
     card =  myObject["card"];
-    value =  myObject["value"];
+//    value =  myObject["value"];
     log_i("%d", card);
-    log_i("%d",value);
+//    log_i("%d",value);
 
     switch (card) {
       case 0:   // fresh connection
