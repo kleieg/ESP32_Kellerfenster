@@ -58,8 +58,8 @@ float BME_Temperature;
 float BME_Humidity;
 float BME_Pressure;
 long  BME_Time;
-int BME_Mode = 1; // 1 = auto  2 = open  3 = closed  based on Button
-// mode set by IP-Symcon
+
+// mode set by IP-Symcon or Button
 int Mode = 1;   // 1 = auto  2 = open  3 = closed
 
 // variables for LED 
@@ -83,12 +83,8 @@ long ButtonlastScan = -1000;
 bool ButtonState;
 int OpenGpio = 16;
 int CloseGpio = 17;
-int MotorDuration = 2500; // intervall in milliseconds
-int MotorCount = 7;  // intervall count
-int MotorPause = 500; // pause in milliseconds
+int MotorDuration = 2500; //  in milliseconds
 long MotorStart = 0;
-int MotorRun;
-bool MotorClose;
 
 
 
@@ -206,14 +202,14 @@ void LED_blink(int stat) {
         digitalWrite(LED_close, 0);
       break;
       case 2:
-        digitalWrite(LED_open, led);
         digitalWrite(LED_auto, 0);
+        digitalWrite(LED_open, led);
         digitalWrite(LED_close, 0);
       break;
       case 3:
-        digitalWrite(LED_close, led);
-        digitalWrite(LED_open, 0);
         digitalWrite(LED_auto, 0);
+        digitalWrite(LED_open, 0);
+        digitalWrite(LED_close, led);
       break;
     }
   }   
@@ -237,21 +233,18 @@ void MQTT_callback(char* topic, byte* message, unsigned int length) {
 
   if (strTopic == windowTopic ){
 
-    ButtonlastScan = ButtonlastScan + 30000;       // ignore pressed botton next 30 seconds
+    LED_blink(1);
+    ButtonlastScan = ButtonlastScan + MotorDuration;       // ignore pressed botton next MotorDuration seconds
 
     if(MQTT_message == "1"){
       log_i("%s\n","open window");
       digitalWrite(OpenGpio, LOW);
       MotorStart = millis();
-      MotorRun = MotorCount;
-      MotorClose = false;
     }
     else if(MQTT_message == "2"){
       log_i("%s\n","close window");
       digitalWrite(CloseGpio, LOW);
       MotorStart = millis();
-      MotorRun = MotorCount;
-      MotorClose = true;
     }
   }
 
@@ -260,21 +253,15 @@ void MQTT_callback(char* topic, byte* message, unsigned int length) {
     if(MQTT_message == "1"){
       log_i("%s\n","Mode = auto");
       Mode = 1;
-      BME_Mode = 1;
     }
     if(MQTT_message == "2"){
       log_i("%s\n","Mode = open");
       Mode = 2;
-      BME_Mode = 2;
     }
     if(MQTT_message == "3"){
       log_i("%s\n","Mode = close");
       Mode = 3;
-      BME_Mode = 3;
     }
-
-    LED_blink(1);
-
   }
   notifyClients(getOutputStates());
   Mqtt_lastSend = now - MQTT_INTERVAL - 10;  // --> MQTT send !!
@@ -319,7 +306,7 @@ void MQTTsend () {
   mqtt_data["Hum"] = round (BME_Humidity*10) / 10;
   mqtt_data["Pres"] = round (BME_Pressure*10) / 10;
 
-  actuators["Mode"] = BME_Mode;
+  actuators["Mode"] = Mode;
    if  ( WindowState ) {
     actuators["Window"] = 1;
   }
@@ -424,6 +411,8 @@ void loop() {
     bool OldState = WindowState;
     WindowState = digitalRead(WindowGpio);
     if ((WindowState == LOW) && (OldState == HIGH)){
+      MotorStart = 0;
+      digitalWrite (CloseGpio, HIGH);             // window closed. switch off motor
       Mqtt_lastSend = now - MQTT_INTERVAL - 10;  // --> MQTT send !!
     }
     if ((WindowState == HIGH) && (OldState == LOW)){
@@ -434,40 +423,22 @@ void loop() {
     // check Taster
    if (now - ButtonlastScan > Button_scanIntervall) {
     ButtonlastScan = now;
-
     LED_blink(0);
-
     ButtonState = digitalRead(ButtonGpio);
     if (ButtonState == LOW) {
-      BME_Mode = BME_Mode + 1;
-      if ( BME_Mode == 4 ) BME_Mode = 1;
+      Mode = Mode + 1;
+      if ( Mode == 4 ) Mode = 1;
       Mqtt_lastSend = now - MQTT_INTERVAL - 10;  // --> MQTT send !!
-      ButtonlastScan = ButtonlastScan + 10000;       // ignore pressed botton next 10 seconds
+      ButtonlastScan = ButtonlastScan + 2000;       // ignore pressed botton next 2 seconds
     }
   } 
   
   
   // check Motor
    if ((now - MotorStart > MotorDuration) && (MotorStart != 0 )){
-     MotorRun = MotorRun - 1;
-     if ( MotorRun == 0) {
       MotorStart = 0;
       digitalWrite (OpenGpio, HIGH);
       digitalWrite (CloseGpio, HIGH);
-     } else {
-      MotorStart = now;
-      if (MotorClose) {
-        digitalWrite (CloseGpio, HIGH);
-      } else {
-        digitalWrite (OpenGpio, HIGH);
-      }
-      delay (MotorPause);
-      if (MotorClose) {
-        digitalWrite (CloseGpio, LOW);
-      } else {
-        digitalWrite (OpenGpio, LOW);
-      }
-     }
   }    
 
   // check WiFi
