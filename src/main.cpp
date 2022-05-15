@@ -83,7 +83,7 @@ long ButtonlastScan = -1000;
 bool ButtonState;
 int OpenGpio = 16;
 int CloseGpio = 17;
-int MotorDuration = 2500; //  in milliseconds
+int MotorDuration = 15000; //  in milliseconds
 long MotorStart = 0;
 
 
@@ -430,6 +430,7 @@ void loop() {
       if ( Mode == 4 ) Mode = 1;
       Mqtt_lastSend = now - MQTT_INTERVAL - 10;  // --> MQTT send !!
       ButtonlastScan = ButtonlastScan + 2000;       // ignore pressed botton next 2 seconds
+      LED_blink(1);
     }
   } 
   
