@@ -227,7 +227,7 @@ void MQTT_callback(char* topic, byte* message, unsigned int length) {
   }
   log_i("%s\n",MQTT_message);
 
-  String windowTopic = Hostname + "/CMD/Window";
+  String windowTopic = Hostname + "/CMD/Fensterauf";
   String modeTopic = Hostname + "/CMD/Mode";
   String strTopic = String(topic);
 
@@ -236,12 +236,12 @@ void MQTT_callback(char* topic, byte* message, unsigned int length) {
     LED_blink(1);
     ButtonlastScan = ButtonlastScan + MotorDuration;       // ignore pressed botton next MotorDuration seconds
 
-    if(MQTT_message == "1"){
+    if(MQTT_message == "true"){
       log_i("%s\n","open window");
       digitalWrite(OpenGpio, LOW);
       MotorStart = millis();
     }
-    else if(MQTT_message == "2"){
+    if(MQTT_message == "false"){
       log_i("%s\n","close window");
       digitalWrite(CloseGpio, LOW);
       MotorStart = millis();
@@ -308,10 +308,10 @@ void MQTTsend () {
 
   actuators["Mode"] = Mode;
    if  ( WindowState ) {
-    actuators["Window"] = 1;
+    actuators["Fensterauf"] = true;
   }
   else{
-    actuators["Window"] = 0;
+    actuators["Fensterauf"] = false;
   }
   mqtt_data["Actuators"] = actuators;
 
