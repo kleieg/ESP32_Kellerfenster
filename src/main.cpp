@@ -278,6 +278,13 @@ void setup_BME280() {
     while (1);
   }
   log_i("%s\n","BME280 sensor connected");
+  bme.setSampling(Adafruit_BME280::MODE_FORCED, // takeForcedMeasurement must be called before each reading
+  Adafruit_BME280::SAMPLING_X1, // Temp. oversampling
+  Adafruit_BME280::SAMPLING_X1, // Pressure oversampling
+  Adafruit_BME280::SAMPLING_X1, // Humidity oversampling
+  Adafruit_BME280::FILTER_OFF,
+  Adafruit_BME280::STANDBY_MS_1000);
+  log_i("%s\n","BME280 sensor initialized");
 }
 
 
@@ -285,6 +292,7 @@ void setup_BME280() {
 // read BME280 values
 void BME280_scan() {
   
+  bme.takeForcedMeasurement();
   BME_Temperature = bme.readTemperature();
   BME_Humidity = bme.readHumidity();
   BME_Pressure = bme.readPressure() / 100.0F ;  // This forces floating point division
