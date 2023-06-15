@@ -52,12 +52,16 @@ LEDs  25 = auto  26 = open  27 = close
 */
 // variables for BME280
 bool status;
-int BME280_scanIntervall = 30000;  // in milliseconds
+int BME280_scanIntervall = 10000;  // in milliseconds
 long BME280lastScan = 0;
-float BME_Temperature;
-float BME_Humidity;
-float BME_Pressure;
+float BME_Temp;
+float BME_Hum;
+float BME_Pres;
+float BME_Temperature[] = {1.1,1.1,1.1,1.1,1.1,1.1,1.1};
+float BME_Humidity[] = {1.1,1.1,1.1,1.1,1.1,1.1,1.1};
+float BME_Pressure[] = {1.1,1.1,1.1,1.1,1.1,1.1,1.1};
 long  BME_Time;
+int BME_index = 0;
 
 // mode set by IP-Symcon or Button
 int Mode = 1;   // 1 = auto  2 = open  3 = closed
@@ -120,9 +124,9 @@ String getOutputStates(){
   myArray["cards"][5]["c_text"] = "WiFi = " + String(WiFi_reconnect) + "   MQTT = " + String(Mqtt_reconnect);
   myArray["cards"][6]["c_text"] = String(Mode);
   myArray["cards"][7]["c_text"] = " to reboot click ok";
-  myArray["cards"][8]["c_text"] = String(BME_Humidity) +"%";
-  myArray["cards"][9]["c_text"] = String(BME_Pressure) ;
-  myArray["cards"][10]["c_text"] = String(BME_Temperature) + "Grad";
+  myArray["cards"][8]["c_text"] = String(BME_Humidity[BME_index]) +"%";
+  myArray["cards"][9]["c_text"] = String(BME_Pressure[BME_index]) ;
+  myArray["cards"][10]["c_text"] = String(BME_Temperature[BME_index]) + "Grad";
   myArray["cards"][11]["c_text"] = String(Mode);
   
   String jsonString = JSON.stringify(myArray);
@@ -292,10 +296,12 @@ void setup_BME280() {
 // read BME280 values
 void BME280_scan() {
   
+  BME_index = BME_index + 1 - (BME_index / 6) * 7;
+
   bme.takeForcedMeasurement();
-  BME_Temperature = bme.readTemperature();
-  BME_Humidity = bme.readHumidity();
-  BME_Pressure = bme.readPressure() / 100.0F ;  // This forces floating point division
+  BME_Temperature[BME_index] = bme.readTemperature();
+  BME_Humidity[BME_index]  = bme.readHumidity();
+  BME_Pressure [BME_index] = bme.readPressure() / 100.0F ;  // This forces floating point division
 
   notifyClients(getOutputStates());
 }
@@ -303,16 +309,31 @@ void BME280_scan() {
 // send data using Mqtt 
 void MQTTsend () {
 
- JSONVar mqtt_data,  actuators;
+  int i;
+  JSONVar mqtt_data,  actuators;
 
   String mqtt_tag = Hostname + "/STATUS";
   log_i("%s\n", mqtt_tag.c_str());
   
+  BME_Temp = 0.0;
+  BME_Hum = 0.0;
+  BME_Pres = 0.0;
+
+  for (i = 0; i <= 6; i++) {
+    BME_Temp = BME_Temp + BME_Temperature[i];
+    BME_Hum = BME_Hum + BME_Humidity[i];
+    BME_Pres = BME_Pres + BME_Pressure [i];
+  }  
+
+  BME_Temp = BME_Temp / 7;
+  BME_Hum = BME_Hum / 7;
+  BME_Pres = BME_Pres / 7;
+
   mqtt_data["Time"] = My_time;
   mqtt_data["RSSI"] = WiFi.RSSI();
-  mqtt_data["Temp"] = round (BME_Temperature*10) / 10;
-  mqtt_data["Hum"] = round (BME_Humidity*10) / 10;
-  mqtt_data["Pres"] = round (BME_Pressure*10) / 10;
+  mqtt_data["Temp"] = round (BME_Temp*10) / 10;
+  mqtt_data["Hum"] = round (BME_Hum*10) / 10;
+  mqtt_data["Pres"] = round (BME_Pres*10) / 10;
 
   actuators["Mode"] = Mode;
    if  ( WindowState ) {
