@@ -299,9 +299,9 @@ void setup_BME280() {
 void BME280_scan() {
   
   bme.takeForcedMeasurement();
-  BME_Temp = BME_Temp + (bme.readTemperature() - BME_Temp) * 0.5;
-  BME_Hum = BME_Hum + (bme.readHumidity() - BME_Hum) * 0.5;
-  BME_Pres = BME_Pres + (bme.readPressure() / 100.0F  - BME_Pres) * 0.5;  // /100.0F  >> forces floating point division
+  BME_Temp = BME_Temp + (bme.readTemperature() - BME_Temp) * 0.3;
+  BME_Hum = BME_Hum + (bme.readHumidity() - BME_Hum) * 0.3;
+  BME_Pres = BME_Pres + (bme.readPressure() / 100.0F  - BME_Pres) * 0.3;  // /100.0F  >> forces floating point division
 
   notifyClients(getOutputStates());
 }
