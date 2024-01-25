@@ -278,12 +278,13 @@ void setup_BME280() {
     while (1);
   }
   log_i("%s\n","BME280 sensor connected");
-  bme.setSampling(Adafruit_BME280::MODE_FORCED, // takeForcedMeasurement must be called before each reading
-  Adafruit_BME280::SAMPLING_X1, // Temp. oversampling
-  Adafruit_BME280::SAMPLING_X1, // Pressure oversampling
-  Adafruit_BME280::SAMPLING_X1, // Humidity oversampling
-  Adafruit_BME280::FILTER_OFF,
-  Adafruit_BME280::STANDBY_MS_1000);
+  // takeForcedMeasurement must be called before each reading
+  bme.setSampling(Adafruit_BME280::MODE_FORCED,
+                  Adafruit_BME280::SAMPLING_X1,
+                  Adafruit_BME280::SAMPLING_X1,
+                  Adafruit_BME280::SAMPLING_X1,
+                  Adafruit_BME280::FILTER_OFF,
+                  Adafruit_BME280::STANDBY_MS_1000);
   log_i("%s\n","BME280 sensor initialized");
 
   bme.takeForcedMeasurement();
@@ -309,7 +310,6 @@ void BME280_scan() {
 // send data using Mqtt 
 void MQTTsend () {
 
-  int i;
   JSONVar mqtt_data,  actuators;
 
   String mqtt_tag = Hostname + "/STATUS";
@@ -317,9 +317,9 @@ void MQTTsend () {
   
   mqtt_data["Time"] = My_time;
   mqtt_data["RSSI"] = WiFi.RSSI();
-  mqtt_data["Temp"] = round (BME_Temp*10) / 10;
-  mqtt_data["Hum"] = round (BME_Hum*10) / 10;
-  mqtt_data["Pres"] = round (BME_Pres*10) / 10;
+  mqtt_data["Temp"] = round (BME_Temp*10.) / 10.F;
+  mqtt_data["Hum"] = round (BME_Hum*10.) / 10.F;
+  mqtt_data["Pres"] = round (BME_Pres*10.) / 10.F;
 
   actuators["Mode"] = Mode;
    if  ( WindowState ) {
@@ -329,7 +329,6 @@ void MQTTsend () {
     actuators["Fensterauf"] = false;
   }
   mqtt_data["Actuators"] = actuators;
-
 
   String mqtt_string = JSON.stringify(mqtt_data);
 

@@ -1,7 +1,7 @@
 // set hostname used for MQTT tag and WiFi
-#define HOSTNAME "ESP-BME280"
+#define HOSTNAME "ESP-W-Keller"
 #define MQTT_BROKER "192.168.178.15"
-#define VERSION "v 3.1.0"
+#define VERSION "v 4.0.6"
 
 #define MQTT_INTERVAL 120000
 #define RECONNECT_INTERVAL 5000

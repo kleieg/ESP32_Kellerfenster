@@ -9,7 +9,7 @@ int WiFi_reconnect = 0;
 // for MQTT
 long Mqtt_lastSend = 0;
 long lastReconnectAttempt = 0;
-int Mqtt_reconnect = 0;
+int Mqtt_reconnect = -1;
 
 
 // Initializes the espClient. 
@@ -24,8 +24,8 @@ void initWiFi() {
   Hostname += WiFi.macAddress();
   Hostname.replace(":", "");
 
-  WiFi.mode(WIFI_STA);
   WiFi.hostname(Hostname);
+  WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
   log_i("Connecting to WiFi ..");
   while (WiFi.status() != WL_CONNECTED) {
@@ -49,7 +49,6 @@ void reconnect_wifi() {
 }
 
 // This functions reconnects your ESP32 to your MQTT broker
-
 void reconnect_mqtt() {
   String willTopic = Hostname + "/LWT";
   String cmdTopic = Hostname + "/CMD/+";
