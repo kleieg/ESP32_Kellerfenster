@@ -215,50 +215,44 @@ void LED_blink(int stat) {
   }   
 
 // receive MQTT messages
-void MQTT_callback(char* topic, byte* message, unsigned int length) {
+void MQTT_callback(String &topic, String &payload) {
   
   log_i("%s","Message arrived on topic: ");
   log_i("%s\n",topic);
   log_i("%s","Data : ");
-
-  String MQTT_message;
-  for (int i = 0; i < length; i++) {
-    MQTT_message += (char)message[i];
-  }
-  log_i("%s\n",MQTT_message);
+  log_i("%s\n",payload);
 
   String windowTopic = Hostname + "/CMD/Fensterauf";
   String modeTopic = Hostname + "/CMD/Mode";
-  String strTopic = String(topic);
 
-  if (strTopic == windowTopic ){
+  if (topic == windowTopic ){
 
     LED_blink(1);
     ButtonlastScan = ButtonlastScan + MotorDuration;       // ignore pressed botton next MotorDuration seconds
 
-    if(MQTT_message == "true"){
+    if(payload == "true"){
       log_i("%s\n","open window");
       digitalWrite(OpenGpio, LOW);
       MotorStart = millis();
     }
-    if(MQTT_message == "false"){
+    if(payload == "false"){
       log_i("%s\n","close window");
       digitalWrite(CloseGpio, LOW);
       MotorStart = millis();
     }
   }
 
-  if (strTopic == modeTopic ){
+  if (topic == modeTopic ){
 
-    if(MQTT_message == "1"){
+    if(payload == "1"){
       log_i("%s\n","Mode = auto");
       Mode = 1;
     }
-    if(MQTT_message == "2"){
+    if(payload == "2"){
       log_i("%s\n","Mode = open");
       Mode = 2;
     }
-    if(MQTT_message == "3"){
+    if(payload == "3"){
       log_i("%s\n","Mode = close");
       Mode = 3;
     }
@@ -322,20 +316,21 @@ void MQTTsend () {
   mqtt_data["Pres"] = round (BME_Pres*10.) / 10.F;
 
   actuators["Mode"] = Mode;
-   if  ( WindowState ) {
+
+  if  ( WindowState ) {
     actuators["Fensterauf"] = true;
   }
   else{
     actuators["Fensterauf"] = false;
   }
+
   mqtt_data["Actuators"] = actuators;
 
   String mqtt_string = JSON.stringify(mqtt_data);
 
   log_i("%s\n", mqtt_string.c_str());
 
-
-  Mqttclient.publish(mqtt_tag.c_str(), mqtt_string.c_str());
+  mqttClient.publish(mqtt_tag.c_str(), mqtt_string.c_str());
 
   notifyClients(getOutputStates());
 
@@ -364,8 +359,8 @@ void setup() {
   initWiFi();
 
   log_i("setup MQTT\n");
-  Mqttclient.setServer(MQTT_BROKER, 1883);
-  Mqttclient.setCallback(MQTT_callback);
+  initMQTT();
+  mqttClient.onMessage(MQTT_callback);
 
   log_i("setup BME280\n");
   setup_BME280() ;
@@ -468,7 +463,7 @@ void loop() {
 
 
   // check if MQTT broker is still connected
-  if (!Mqttclient.connected()) {
+  if (!mqttClient.connected()) {
     // try reconnect every 5 seconds
     if (now - lastReconnectAttempt > 5000) {
       lastReconnectAttempt = now;
@@ -478,12 +473,12 @@ void loop() {
   } else {
     // Client connected
 
-    Mqttclient.loop();
+    mqttClient.loop();
 
     // send data to MQTT broker
     if (now - Mqtt_lastSend > MQTT_INTERVAL) {
     Mqtt_lastSend = now;
     MQTTsend();
     } 
-  }   
+  } 
 }
